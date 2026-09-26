@@ -2,7 +2,8 @@ name: Deploy to staging
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   redeploy_everything:
@@ -12,20 +13,55 @@ jobs:
     steps:
       - name: Deploy to staging VM
         run: |
+          # Create SSH private key
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/ssh_key
           chmod 600 ~/ssh_key
 
+          # Configure known hosts
           mkdir -p ~/.ssh
           echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-          ssh -i ~/ssh_key azureuser@20.244.17.200 -t "
-            cd ~/ci-next-app &&
-            git pull origin main &&
-            export PATH=/home/azureuser/.nvm/versions/node/v22.13.1/bin:\$PATH &&
-            pnpm install &&
-            pnpm run build &&
-            pm2 restart fe-server &&
-            pm2 restart http-server &&
-            pm2 restart ws-server
-          "
+          # Connect to staging VM
+          ssh -i ~/ssh_key \
+            -o StrictHostKeyChecking=yes \
+            azureuser@20.244.17.200 -t '
+              
+              echo "===== Connected to staging VM ====="
+              whoami
+
+              echo "===== Loading NVM ====="
+              export NVM_DIR="$HOME/.nvm"
+              [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+              echo "===== Node version ====="
+              node -v
+
+              echo "===== PNPM version ====="
+              pnpm -v
+
+              echo "===== PM2 version ====="
+              pm2 -v
+
+              echo "===== Going to project ====="
+              cd ~/ci-next-app
+
+              echo "===== Pulling latest code ====="
+              git pull origin main
+
+              echo "===== Installing dependencies ====="
+              pnpm install
+
+              echo "===== Building application ====="
+              pnpm run build
+
+              echo "===== Restarting PM2 applications ====="
+              pm2 restart fe-server
+              pm2 restart http-server
+              pm2 restart ws-server
+
+              echo "===== PM2 status ====="
+              pm2 status
+
+              echo "===== Deployment completed ====="
+            '
